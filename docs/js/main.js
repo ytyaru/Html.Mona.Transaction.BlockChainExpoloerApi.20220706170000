@@ -1,10 +1,49 @@
 window.addEventListener('DOMContentLoaded', async(event) => {
+    const trezor = new TrezorClient()
+    const dbs = new Map()
+    function sleep(ms=1000) { return new Promise(resolve => setTimeout(resolve, ms)); }
     try {
         window.mpurse.updateEmitter.removeAllListeners()
           .on('stateChanged', async(isUnlocked) => { await init(); console.log(isUnlocked); })
           .on('addressChanged', async(address) => { await init(address); console.log(address); });
     } catch(e) { console.debug(e) }
     document.getElementById('get-transaction').addEventListener('click', async(event) => {
+        const address = document.getElementById('address').value
+        const last = dbs.get(address).last.toArray()
+        const options = {}
+        if (0 < last.length) { // 前回データがあるなら一旦それを表示する
+            options.from = last.last_block_height
+        }
+        // 最新データを取得する
+        const res = trezor.address(address, options)
+        if (0 < last.length) { // 前回データがあるなら最新データからそれ以前のデータを削除する
+            const last_txid_idx = res.txids.findIndex(last.last_txid)
+            const newTxIds = res.txids.slice(0, last_txid_idx)
+            const addrs = new Set([...tx.vin.map(v=>v.addresses), ...tx.vout.map(v=>v.addresses)])
+            addrs.delete(address)
+            for (let i=0; i<newTxIds.length; i++) {
+                const tx = await trezor.tx(newTxIds[i])
+                const isPay = tx.vin.some(in=>in.addresses.includes(address))
+                const value = (isPay) ? tx.vin[tx.vin.findIndex(v=>v.addresses.includes(address))].value : 
+                if (0 === tx.confirmations) { console.error('未承認トランザクションです！', tx) }
+                dbs.get(address).transactions.add({
+                    txid: txid[i],
+                    isPay: isPay ,
+                    addresses: addrs.values().join(','),
+                    value: tx.value,
+                    fee: tx.fees,
+                    blockTime: tx.blockTime,
+                    blockHeight: tx.blockHeight,
+                })
+                await sleep(1000)
+                // 進捗表示
+                console.debug(`${((i+1)/newTxIds.length).toFixed(2)}% ${i+1}/${newTxIds.length}`)
+            }
+        }
+        // 最新データが上限数存在するなら（続きのデータがあるなら）取得する（上記をループ）
+
+        // 最新データを表示する
+        /*
         const address = document.getElementById('address').value
         if (address) {
             const client = new MonaTransactionClient()
@@ -14,10 +53,16 @@ window.addEventListener('DOMContentLoaded', async(event) => {
             const gen = new MonaTransactionViewer(address)
             document.getElementById('export-transaction').innerHTML = await gen.generate(json)
         }
+        */
     });
     async function init(address=null) {
         if (window.hasOwnProperty('mpurse')) {
-            document.getElementById('address').value = address || await window.mpurse.getAddress()
+            const addr  = address || await window.mpurse.getAddress()
+            if (!dbs.has(addr)) {
+                dbs.set(addr, new MonaTransactionDb(addr))
+                console.debug(addr)
+                console.debug(dbs.get(addr))
+            }
             document.getElementById('get-transaction').dispatchEvent(new Event('click'))
         }
     }
