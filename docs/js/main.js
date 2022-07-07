@@ -8,8 +8,6 @@ window.addEventListener('DOMContentLoaded', async(event) => {
           .on('addressChanged', async(address) => { await init(address); console.log(address); });
     } catch(e) { console.debug(e) }
     document.getElementById('get-transaction').addEventListener('click', async(event) => {
-        //await debug()
-        //return;
         const address = document.getElementById('address').value
         if (!address) { return }
         console.debug(address)
@@ -17,11 +15,10 @@ window.addEventListener('DOMContentLoaded', async(event) => {
         console.debug(dbs.get(address))
         console.debug(dbs.get(address).dexie)
         console.debug(dbs.get(address).dexie.last)
-        //const last = await dbs.get(address).dexie.last.toArray()
         const last = await dbs.get(address).dexie.last.get(1)
         console.debug(last)
         const options = {}
-        if (last) { // 前回データがあるなら一旦それを表示する
+        if (last) { // 前回データがあるなら取得開始位置としてブロックの高さを渡す（これ以降のデータしか取得しない）
             options.from = last.lastBlockHeight
         }
         console.debug(options)
@@ -38,8 +35,6 @@ window.addEventListener('DOMContentLoaded', async(event) => {
         let receiveCount = 0
         let sendAddressCount = 0
         let receiveAddressCount = 0
-        //console.debug(await trezor.address(address, options))
-        //for await (let res of trezor.address(address, options)) {
         for await (const res of trezor.address(address, options)) {
             if (!res) { break }
             console.debug(res)
@@ -64,16 +59,11 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                     unconfirmedBalance = res.unconfirmedBalance 
                     unconfirmedTxs = res.unconfirmedTxs 
                 }
-                //newFees += tx.fees
-                newFees += parseInt(tx.fees)
+                const fee = parseInt(tx.fees)
+                newFees += fee
                 console.debug(tx)
-                //const addrs = new Set([...tx.vin.map(v=>v.addresses), ...tx.vout.map(v=>v.addresses)])
                 const isPay = tx.vin.some(v=>v.addresses.includes(address))
                 const value = (isPay) ? parseInt(tx.vin[tx.vin.findIndex(v=>v.addresses.includes(address))].value) - parseInt(tx.vout[tx.vout.findIndex(v=>v.addresses.includes(address))].value) : parseInt(tx.vout[tx.vout.findIndex(v=>v.addresses.includes(address))].value)
-                //const addrsAry = (isPay) ? tx.vout.map(v=>v.addresses) : tx.vin.map(v=>v.addresses)
-                const addrsAry = ((isPay) ? tx.vout.map(v=>v.addresses) : tx.vin.map(v=>v.addresses)).flat()
-                console.debug(addrsAry)
-                //const addrs = new Set((isPay) ? tx.vout.map(v=>v.addresses) : tx.vin.map(v=>v.addresses))
                 const addrs = new Set(((isPay) ? tx.vout.map(v=>v.addresses) : tx.vin.map(v=>v.addresses)).flat())
                 console.debug(addrs)
                 addrs.delete(address)
@@ -84,11 +74,11 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 console.debug(dbs.get(address))
                 console.debug(dbs.get(address).dexie.transactions)
                 dbs.get(address).dexie.transactions.put({
-                    txid: tx.txid, // newTxIds[i]
+                    txid: tx.txid,
                     isPay: isPay,
                     addresses: Array.from(addrs).join(','),
                     value: value,
-                    fee: parseInt(tx.fees),
+                    fee: fee,
                     confirmations: tx.confirmations,
                     blockTime: tx.blockTime,
                     blockHeight: tx.blockHeight,
@@ -96,15 +86,8 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 // 進捗表示
                 console.debug(`${(((i+1)/newTxIds.length)*100).toFixed(2)}% ${i+1}/${newTxIds.length}`)
                 console.debug(dbs.get(address).dexie.transactions.get(tx.txid))
-
-
-                // デバッグ
-                break
             }
-
-            // デバッグ
-            //return
-            console.debug('XXXXXXXXXXJDJDJD')
+            if (newTxIds.length < 1) { break }
             const count = ((last) ? last.count : 0) + newTxIds.length
             const fee = ((last) ? last.fee : 0) + newFees
             const txs = await dbs.get(address).dexie.transactions.toArray()
@@ -129,7 +112,6 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 receiveAddressCount: receiveAddrs.size,
             }
             await dbs.get(address).dexie.last.put(record)
-            Array.from(payAddrs)
             for (const addr of payAddrs.values()) {
                 const addrPayTxs = txs.filter(tx=>tx.isPay && tx.addresses === addr)
                 const times = addrPayTxs.map(tx=>tx.blockTime)
@@ -137,8 +119,6 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                     address: addr,
                     value: addrPayTxs.map(tx=>tx.value).reduce((sum,v)=>sum+v),
                     count: addrPayTxs.length,
-                    //firsted: addrPayTxs.reduce((a,b)=>Math.min(a.blockTime, b.blockTime)),
-                    //lasted: addrPayTxs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime)),
                     firsted: times.reduce((a,b)=>Math.min(a,b)),
                     lasted: times.reduce((a,b)=>Math.max(a,b)),
                 })
@@ -150,155 +130,12 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                     address: addr,
                     value: addrTxs.map(tx=>tx.value).reduce((sum,v)=>sum+v),
                     count: addrTxs.length,
-                    //firsted: addrTxs.reduce((a,b)=>Math.min(a.blockTime, b.blockTime)),
-                    //lasted: addrTxs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime)),
                     firsted: times.reduce((a,b)=>Math.min(a, b)),
                     lasted: times.reduce((a,b)=>Math.max(a, b)),
                 })
             }
         }
     });
-    async function debug() {
-        const address = document.getElementById('address').value
-        if (!address) { return }
-        const options = {}
-        //let lastBlockHeight = -1
-        //let lastTxId = -1
-        let balance = -1
-        let totalReceived = -1
-        let totalSent = -1
-        let unconfirmedBalance = -1
-        let unconfirmedTxs = -1
-        //let newFees = 0
-        //let sendCount = 0
-        //let receiveCount = 0
-        //let sendAddressCount = 0
-        //let receiveAddressCount = 0
-        //const res = await trezor.address(address, options)
-        //console.debug(res.next())
-        for await (const res of trezor.address(address, options)) {
-        //for (const res of await trezor.address(address, options)) {
-            balance = res.balance
-            totalReceived = res.totalReceived 
-            totalSent = res.totalSent 
-            unconfirmedBalance = res.unconfirmedBalance 
-            unconfirmedTxs = res.unconfirmedTxs 
-            break
-        }
-        const txs = await dbs.get(address).dexie.transactions.toArray()
-        console.debug(txs)
-        const count = txs.length
-        const fee = txs.map(tx=>parseInt(tx.fee)).reduce((sum,v)=>sum+v)
-        console.debug(count, fee, (fee*(0.1**8)))
-        const lastBlockTime = txs.map(tx=>tx.blockTime).reduce((a,b)=>Math.max(a, b))
-        console.debug(lastBlockTime)
-        const lastTx = txs.filter(tx=>tx.blockTime === lastBlockTime)[0]
-        console.debug(lastTx)
-        const lastBlockHeight = lastTx.blockHeight
-        const lastTxId = lastTx.txid
-
-        const payTxs = txs.filter(tx=>tx.isPay)
-        const receiveTxs = txs.filter(tx=>!tx.isPay)
-        const payAddrs = new Set(payTxs.map(tx=>tx.addresses))
-        const receiveAddrs = new Set(receiveTxs.map(tx=>tx.addresses))
-        const record = {
-            id: 1,
-            count: count,
-            lastBlockHeight: lastBlockHeight,
-            lastTxId: lastTxId,
-            sendValue: totalSent,
-            receiveValue: totalReceived,
-            balance: balance,
-            fee: fee,
-            unconfirmedBalance: unconfirmedBalance,
-            unconfirmedTxs: unconfirmedTxs,
-            sendCount: sendCount,
-            receiveCount: receiveCount,
-            sendAddressCount: payAddrs.size,
-            receiveAddressCount: receiveAddrs.size,
-        }
-        await dbs.get(address).dexie.last.put(record)
-        for (const addr of payAddrs.values()) {
-            const addrPayTxs = txs.filter(tx=>tx.isPay && tx.addresses === addr)
-            await dbs.get(address).dexie.sendPartners.put({
-                address: addr,
-                value: addrPayTxs.reduce((sum,v)=>sum+v),
-                count: addrPayTxs.length,
-                firsted: addrPayTxs.reduce((a,b)=>Math.min(a.blockTime, b.blockTime)),
-                lasted: addrPayTxs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime)),
-            })
-        }
-        for (const addr of receiveAddrs.values()) {
-            const addrTxs = txs.filter(tx=>!tx.isPay && tx.addresses === addr)
-            await dbs.get(address).dexie.receivePartners.put({
-                address: addr,
-                value: addrTxs.reduce((sum,v)=>sum+v),
-                count: addrTxs.length,
-                firsted: addrTxs.reduce((a,b)=>Math.min(a.blockTime, b.blockTime)),
-                lasted: addrTxs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime)),
-            })
-        }
-
-        //console.debug(await trezor.address(address, options))
-        /*
-        for await (const res of trezor.address(address, options)) {
-            balance = res.balance
-            totalReceived = res.totalReceived 
-            totalSent = res.totalSent 
-            unconfirmedBalance = res.unconfirmedBalance 
-            unconfirmedTxs = res.unconfirmedTxs 
-            break
-        }
-        const txs = await dbs.get(address).dexie.transactions.toArray()
-        const count = txs.length
-        const fee = txs.map(tx=>tx.fee).reduce((sum,v)=>sum+v)
-        const lastBlockTime = txs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime))
-        const lastBlockHeight = txs.filter(tx=>tx.blockTime === lastBlockTime)[0].blockHeight
-        const lastTxId = txs.filter(tx=>tx.blockTime === lastBlockTime)[0].txid
-
-        const payTxs = txs.filter(tx=>tx.isPay)
-        const receiveTxs = txs.filter(tx=>!tx.isPay)
-        const payAddrs = new Set(payTxs.map(tx=>tx.addresses))
-        const receiveAddrs = new Set(receiveTxs.map(tx=>tx.addresses))
-        const record = {
-            id: 1,
-            count: count,
-            lastBlockHeight: lastBlockHeight,
-            lastTxId: lastTxId,
-            sendValue: totalSent,
-            receiveValue: totalReceived,
-            balance: balance,
-            fee: fee,
-            unconfirmedBalance: unconfirmedBalance,
-            unconfirmedTxs: unconfirmedTxs,
-            sendCount: sendCount,
-            receiveCount: receiveCount,
-            sendAddressCount: payAddrs.size,
-            receiveAddressCount: receiveAddrs.size,
-        }
-        await dbs.get(address).dexie.last.put(record)
-        for (const addr of payAddrs.values()) {
-            const addrPayTxs = txs.filter(tx=>tx.isPay && tx.addresses === addr)
-            await dbs.get(address).dexie.sendPartners.put({
-                address: addr,
-                value: addrPayTxs.reduce((sum,v)=>sum+v),
-                count: addrPayTxs.length,
-                firsted: addrPayTxs.reduce((a,b)=>Math.min(a.blockTime, b.blockTime)),
-                lasted: addrPayTxs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime)),
-            })
-        }
-        for (const addr of receiveAddrs.values()) {
-            const addrTxs = txs.filter(tx=>!tx.isPay && tx.addresses === addr)
-            await dbs.get(address).dexie.receivePartners.put({
-                address: addr,
-                value: addrTxs.reduce((sum,v)=>sum+v),
-                count: addrTxs.length,
-                firsted: addrTxs.reduce((a,b)=>Math.min(a.blockTime, b.blockTime)),
-                lasted: addrTxs.reduce((a,b)=>Math.max(a.blockTime, b.blockTime)),
-            })
-        }
-        */
-    }
     async function init(address=null) {
         if (window.hasOwnProperty('mpurse')) {
             const addr  = address || await window.mpurse.getAddress()
