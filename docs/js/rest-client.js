@@ -4,6 +4,7 @@ class RestClient {
         'Content-Type': 'application/json',
     }}
     getJsonHeaders(headers=null) { return (headers) ? {...this.getDefaultJsonHeaders(), ...headers} : this.getDefaultJsonHeaders() }
+    async sleep(ms=1000) { return new Promise(resolve => setTimeout(resolve, ms)); }
     async get(url, headers) {
         const data = {
             method: 'GET',

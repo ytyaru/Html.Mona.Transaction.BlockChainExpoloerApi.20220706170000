@@ -28,7 +28,7 @@ class MonaTransactionDb {
     create(address) { // address:自分のアドレス
         this.dexie = new Dexie(`${address}`); // 自分のアドレスひとつごとにDBを作成する。テーブル結合不要になる。
         this.dexie.version(1).stores({
-            last: `++id`
+            last: `++id`,
             sendPartners: `address`,
             receivePartners: `address`,
             transactions:  `txid`,
