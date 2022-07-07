@@ -134,7 +134,7 @@ class MonaTransactionViewerFromDb {
     }
     makePayWhenValueTable(address, isPay) {
         const targets = this.txs.filter(tx=>tx.isPay===isPay && tx.addresses===address).sort((a,b)=>b.blockTime - a.blockTime)
-        return '<table>' + targets.map(t=>`<tr><td class="num">${this.#toMona(t.value)} MONA</td><td>${this.#makeTime(new Date(t.blockTime * 1000))}</td></tr>`).join('') + '</table>'
+        return '<table>' + targets.map(t=>`<tr><td class="num">${this.#toMona(t.value - ((isPay) ? t.fee : 0))} MONA</td><td>${this.#makeTime(new Date(t.blockTime * 1000))}</td></tr>`).join('') + '</table>'
     }
     /*
     makePayWhenValueTable(history) {
