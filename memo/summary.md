@@ -59,8 +59,8 @@
 ----|--|----
 `id`|number|主キー。
 `count`|number|取引回数
-`lastBlockHeight`|number|最後のブロックの高さ`height` ([`/api/v2/address/`][]の引数にする)
-`lastTxId`|string|最後の取引`txid` ([`/api/v2/address/`][]の戻り値から取得済・未取得の判断をし書き込む要素位置を判定する)
+`lastBlockHeight`|number|最新承認済み取引のブロックの高さ`height` ([`/api/v2/address/`][]の引数にする)
+`lastTxId`|string|最新承認済み取引の`txid` ([`/api/v2/address/`][]の戻り値から取得済・未取得の判断をし書き込む要素位置を判定する)
 `sendValue`|number|総支払額
 `receiveValue`|number|総受取額
 `fee`|number|総手数料
@@ -69,6 +69,9 @@
 `receiveCount`|number|総受取回数
 `sendAddressCount`|number|総支払アドレス数
 `receiveAddressCount`|number|総受取アドレス数
+`bothAddressCount`|number|両思アドレス数
+`firsted`|number|最初の取引のblockTime
+`lasted`|number|最後の取引のblockTime
 
 　金額は`value`に`0.1**8`を掛けた値が`MONA`になる。`value`は浮動小数点を排除し誤差をなくすため整数化した値と思われる。JavaScriptにおける整数の最大値は[MAX_SAFE_INTEGER][]で参照でき`9007199254740991`。小数点8位をとると、整数部は9千万。
 
@@ -186,4 +189,36 @@
 `height`|number|ブロックの高さ（集計には不要だがAPIを使いブロックハッシュを取得できるため一応残す）
 
 　`aid`と`address`の複合キー。`aid`は`last`テーブルの`id`。そうすることで長ったらしいアドレスを使わずに済む。
+
+# 実際の結果をみた所感
+
+　だいたい合ってる。
+
+　ただ、[もなフォーセット][]で受け取った分の取引データがおかしい。支払いアドレスが毎回違う。そのため受取人数が異常に増えてしまった。
+
+[もなフォーセット]:https://faucet.mona.fun/ref.php?r=5dd285977dc75d45&lang=ja
+
+　あと、ユーザ相関図のユーザ座標もおかしい。隣同士重ならない範囲で最大件数を表示するつもりだったのに、2周目が思い切り重なっている。これはバグだった。以下のように修正した。
+
+before
+```javascript
+const itemNum = (i == this.outerLen-1) ? this.partners.length - ((i==0) ? 0 : this.outerNums[i-1]) : this.outerNums[i]
+```
+after
+```javascript
+const itemNum = (i == this.outerLen-1) ? this.partners.length - ((i==0) ? 0 : this.outerNums[i-1]) : this.userIconNum[i+1]
+```
+
+## 既存バグ
+
+　`last`テーブルの`lastTxId`や`lastBlockHeight`は、次回最新取引データを取得するときの始点となる。前回の続きとして機能する。状況次第ではここでバグが起きる。
+
+　前回の続きは最後の要素でなく最後の承認済み取引にした。理由は承認後に日時などが更新される手はずだから。次回`put`で更新されるかもしれないようにした。
+
+　おそらく未承認のまま更新されない事態も起こりうる。たとえば手数料がゼロのためマイニングされないデータが生じうる。そのデータのあとで承認データがあれば、`lastBlockHeight`が更新されてしまい、もう未承認データのデータは取得されず、更新されない。よって、別途未承認データだけを個別に取得し、更新されていないか確認する必要がある。
+
+　現在は更新を実装していないため、更新されないバグがある。
+
+　もし手数料ゼロなどによりマイナーの動機がなく、半永久的に承認されなければ、毎回更新チェックが走ることになる。もし未承認データ件数が多ければ、その負荷はさらにあがる。
+
 

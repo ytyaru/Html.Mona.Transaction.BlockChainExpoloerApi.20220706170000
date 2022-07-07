@@ -35,6 +35,8 @@ window.addEventListener('DOMContentLoaded', async(event) => {
         let receiveCount = 0
         let sendAddressCount = 0
         let receiveAddressCount = 0
+        let lastFirsted = 0
+        let lastLasted = 0
         for await (const res of trezor.address(address, options)) {
             if (!res) { break }
             console.debug(res)
@@ -50,7 +52,7 @@ window.addEventListener('DOMContentLoaded', async(event) => {
             console.debug(newTxIds)
             for (let i=0; i<newTxIds.length; i++) {
                 const tx = await trezor.tx(newTxIds[i])
-                if (-1 === lastTxId) { // 初回なら
+                if (-1 === lastTxId && 0 < tx.confirmations) { // 最新の承認済み取引なら
                     lastBlockHeight = tx.blockHeight 
                     lastTxId = tx.txid
                     balance = res.balance
@@ -58,6 +60,10 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                     totalSent = res.totalSent 
                     unconfirmedBalance = res.unconfirmedBalance 
                     unconfirmedTxs = res.unconfirmedTxs 
+                    lastLasted = tx.blockTime
+                }
+                if (i === newTxIds.length-1) { // 最後なら
+                    lastFirsted = tx.blockTime
                 }
                 const fee = parseInt(tx.fees)
                 newFees += fee
@@ -95,6 +101,9 @@ window.addEventListener('DOMContentLoaded', async(event) => {
             const receiveTxs = txs.filter(tx=>!tx.isPay)
             const payAddrs = new Set(payTxs.map(tx=>tx.addresses))
             const receiveAddrs = new Set(receiveTxs.map(tx=>tx.addresses))
+            const payAddrsAry = Array.from(payAddrs)
+            const receiveAddrsAry = Array.from(receiveAddrs)
+            const bothAddrsAry = payAddrsAry.filter(addr=>receiveAddrsAry.includes(addr))
             const record = {
                 id: 1,
                 count: count,
@@ -110,6 +119,9 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 receiveCount: receiveCount,
                 sendAddressCount: payAddrs.size,
                 receiveAddressCount: receiveAddrs.size,
+                bothAddressCount: bothAddrsAry.length,
+                firsted: (last) ? last.firsted : lastFirsted,
+                lasted: lastLasted,
             }
             await dbs.get(address).dexie.last.put(record)
             for (const addr of payAddrs.values()) {
@@ -117,7 +129,9 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 const times = addrPayTxs.map(tx=>tx.blockTime)
                 await dbs.get(address).dexie.sendPartners.put({
                     address: addr,
-                    value: addrPayTxs.map(tx=>tx.value).reduce((sum,v)=>sum+v),
+                    //value: addrPayTxs.map(tx=>tx.value).reduce((sum,v)=>sum+v),
+                    value: addrPayTxs.map(tx=>tx.value-tx.fees).reduce((sum,v)=>sum+v),
+                    //fee: addrPayTxs.map(tx=>tx.fees).reduce((sum,v)=>sum+v)
                     count: addrPayTxs.length,
                     firsted: times.reduce((a,b)=>Math.min(a,b)),
                     lasted: times.reduce((a,b)=>Math.max(a,b)),
@@ -135,6 +149,8 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 })
             }
         }
+        const viewer = new MonaTransactionViewerFromDb(address, dbs)
+        document.getElementById(`export-transaction`).innerHTML = await viewer.generate()
     });
     async function init(address=null) {
         if (window.hasOwnProperty('mpurse')) {
