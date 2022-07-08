@@ -38,11 +38,11 @@ window.addEventListener('DOMContentLoaded', async(event) => {
         let lastFirsted = 0
         let lastLasted = 0
         for await (const res of trezor.address(address, options)) {
+            if (!res) { break }
+            console.debug(res)
             document.getElementById(`progress`).display = 'inline'
             document.getElementById(`progress`).max = res.txids.length
             document.getElementById(`progress`).value = 0
-            if (!res) { break }
-            console.debug(res)
             document.getElementById('response').value = JSON.stringify(res)
             let newTxIds = res.txids
             if (last) { // 前回データがあるなら最新データからそれ以前のデータを削除する
@@ -100,7 +100,7 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                 //document.getElementById(`progress`).value += 1
                 document.getElementById(`progress`).value++
                 console.debug(document.getElementById(`progress`).value)
-                document.getElementById(`progress-rate`).innerText = `${progressRate}%`
+                document.getElementById(`progress-rate`).innerText = `${progressRate}% ${i+1}/${newTxIds.length}`
                 console.debug()
             }
             // 未承認取引データDB更新
