@@ -31,16 +31,20 @@ window.addEventListener('DOMContentLoaded', async(event) => {
         let unconfirmedBalance = -1
         let unconfirmedTxs = -1
         let newFees = 0
-        let sendCount = 0
-        let receiveCount = 0
+        let sendCount = (last) ? last.sendCount : 0
+        let receiveCount = (last) ? last.receiveCount : 0
         let sendAddressCount = 0
         let receiveAddressCount = 0
         let lastFirsted = 0
         let lastLasted = 0
+        document.getElementById(`progress`).style.display = 'inline'
+        document.getElementById(`progress-rate`).style.display = 'inline'
         for await (const res of trezor.address(address, options)) {
+            //debugLast(res)
             if (!res) { break }
+            if (!res.hasOwnProperty('txids')) { break }
             console.debug(res)
-            document.getElementById(`progress`).display = 'inline'
+            //window.getComputedStyle(document.getElementById(`progress`));
             document.getElementById(`progress`).max = res.txids.length
             document.getElementById(`progress`).value = 0
             document.getElementById('response').value = JSON.stringify(res)
@@ -105,9 +109,10 @@ window.addEventListener('DOMContentLoaded', async(event) => {
             }
             // 未承認取引データDB更新
             const txs = await dbs.get(address).dexie.transactions.toArray()
+            /*
             console.debug(txs)
             const notConfirmTxs = txs.filter(tx=>0===tx.confirmations).map(tx=>tx.txid)
-            if (0 < notConfirmTxs.length) { lastLasted = last.lasted }
+            if (last && 0 < notConfirmTxs.length) { lastLasted = last.lasted }
             for (const txid of notConfirmTxs) {
                 const tx = await trezor.tx(txid)
                 if (0 === tx.confirmations) { continue }
@@ -129,7 +134,7 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                     blockHeight: tx.blockHeight,     // 更新
                 })
             }
-            if (0 === newTxIds.length && last && 0 < notConfirmTxs.length)  { // 未承認取引データだけ更新があった
+            if (0 === newTxIds.length && last && 0 < notConfirmTxs.length && -1 < lastTxId)  { // 未承認取引データだけ更新があった
                 await dbs.get(address).dexie.last.put({
                     id: last.id,
                     count: last.count,
@@ -150,7 +155,9 @@ window.addEventListener('DOMContentLoaded', async(event) => {
                     lasted: lastLasted, // 更新
                 })
             }
-            if (newTxIds.length < 1) { break }
+            */
+            if (newTxIds.length < 1 || -1 == lastTxId) { break }
+            console.debug('******************* lastテーブル更新 *******************')
             const count = ((last) ? last.count : 0) + newTxIds.length
             const fee = ((last) ? last.fee : 0) + newFees
             //const txs = await dbs.get(address).dexie.transactions.toArray()
@@ -208,8 +215,51 @@ window.addEventListener('DOMContentLoaded', async(event) => {
         }
         const viewer = new MonaTransactionViewerFromDb(address, dbs)
         document.getElementById(`export-transaction`).innerHTML = await viewer.generate()
-        document.getElementById(`progress`).display = 'none'
+        document.getElementById(`progress`).style.display = 'none'
+        document.getElementById(`progress-rate`).style.display = 'none'
     });
+    async function debugLast(res) {
+        const address = document.getElementById('address').value
+        const txs = await dbs.get(address).dexie.transactions.toArray()
+        const cnfTxs = txs.filter(tx=>0<tx.confirmations)
+        const maxBlockHeight = cnfTxs.map(tx=>tx.blockHeight).reduce((sum,v)=>Math.max(sum,v))
+        const blockTimes = cnfTxs.map(tx=>tx.blockTime)
+        const maxBlockTime = blockTimes.reduce((sum,v)=>Math.max(sum,v))
+        const minBlockTime = blockTimes.reduce((sum,v)=>Math.min(sum,v))
+        const lastTxId = cnfTxs.find(tx=>tx.blockTime===maxBlockTime).txid
+        const payTxs = txs.filter(tx=>tx.isPay)
+        const receiveTxs = txs.filter(tx=>!tx.isPay)
+        const payAddrs = new Set(payTxs.map(tx=>tx.addresses))
+        const receiveAddrs = new Set(receiveTxs.map(tx=>tx.addresses))
+        const payAddrsAry = Array.from(payAddrs)
+        const receiveAddrsAry = Array.from(receiveAddrs)
+        const bothAddrsAry = payAddrsAry.filter(addr=>receiveAddrsAry.includes(addr))
+        const fee = txs.filter(tx=>tx.isPay).map(tx=>tx.fee).reduce((sum,v)=>sum+v)
+        const record = {
+            id: 1,
+            //count: txs.length,
+            count: res.txs,
+            lastBlockHeight: maxBlockHeight,
+            lastTxId: lastTxId,
+            sendValue: parseInt(res.totalSent),
+            receiveValue: parseInt(res.totalReceived),
+            balance: parseInt(res.balance),
+            //sendValue: parseInt(totalSent),
+            //receiveValue: parseInt(totalReceived),
+            //balance: parseInt(balance),
+            fee: fee,
+            unconfirmedBalance: parseInt(res.unconfirmedBalance),
+            unconfirmedTxs: res.unconfirmedTxs,
+            sendCount: payTxs.length,
+            receiveCount: receiveTxs.length,
+            sendAddressCount: payAddrs.size,
+            receiveAddressCount: receiveAddrs.size,
+            bothAddressCount: bothAddrsAry.length,
+            firsted: minBlockTime,
+            lasted: maxBlockTime,
+        }
+        await dbs.get(address).dexie.last.put(record)
+    }
     async function init(address=null) {
         if (window.hasOwnProperty('mpurse')) {
             const addr  = address || await window.mpurse.getAddress()

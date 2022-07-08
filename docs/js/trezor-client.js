@@ -31,6 +31,7 @@ class TrezorClient extends RestClient { // https://github.com/trezor/blockbook/b
             const query = this.#makeAddrParams(options)
             const headers = {'Content-Type': 'text/plain'}
             const res = await this.get(`${this.domain}api/v2/address/${address}${(query) ? '?' + query : ''}`, headers)
+            console.debug(res)
             still = this.#continue(res)
             console.debug(still, res)
             yield res
@@ -45,7 +46,8 @@ class TrezorClient extends RestClient { // https://github.com/trezor/blockbook/b
         return await this.get(`${this.domain}api/v2/address/${address}${(query) ? '?' + query : ''}`, headers)
         */
     }
-    #continue(res) { return (this.pageSize === res.txids.length) }
+    //#continue(res) { return (this.pageSize === res.txids?.length) } // txidsが返されない場合がある。リクエスト制限？
+    #continue(res) { return (res.hasOwnProperty('txids')) ? (this.pageSize === res.txids.length) : false } // txidsが返されない場合がある。リクエスト制限？
     #makeAddrParams(options) {
         const params = new URLSearchParams()
         const names = ['page', 'pageSize', 'from', 'to', 'details', 'contract']

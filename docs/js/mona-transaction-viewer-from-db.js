@@ -26,6 +26,8 @@ class MonaTransactionViewerFromDb {
              + '<br>'
              //+ this.makePayBalanceAmount(json)
              + this.makeBalancePeopleTable()
+             + this.#makeCalcTable(pays, receives)
+             + await this.#makeMpChainTable()
              + '<br>'
              + svgGen.generate(pays)
              + svgGen.generate(receives)
@@ -43,10 +45,15 @@ class MonaTransactionViewerFromDb {
         //const lasted = new Date(json.result[json.result.length-1].time * 1000)
         const lasted = new Date(this.last.lasted * 1000);
         const firsted = new Date(this.last.firsted * 1000);
+        const count = this.last.count
+        //const payCnt = this.last.sendCount
+        //const recCnt = this.last.receiveCount
+        const payCnt = this.txs.filter(tx=>tx.isPay).length
+        const recCnt = this.txs.filter(tx=>!tx.isPay).length
         return this.#makeTime(lasted) + '〜' + this.#makeTime(firsted)
-                + `　<span><span id="transaction-count">${this.last.count}</span>回</span>`
-                + `（<span><span id="pay-count">${this.last.sendCount}</span>出</span>`
-                + `　<span><span id="received-count">${this.last.receiveCount}</span>入</span>）`
+                + `　<span><span id="transaction-count">${count}</span>回</span>`
+                + `（<span><span id="pay-count">${payCnt}</span>出</span>`
+                + `　<span><span id="received-count">${recCnt}</span>入</span>）`
 //                + `　<span><span id="transaction-count">${json.result.length}</span>回</span>`
 //                + `（<span><span id="pay-count">${this.calcTotalPayCount(json)}</span>出</span>`
 //                + `　<span><span id="received-count">${this.calcTotalReceivedCount(json)}</span>入</span>）`
@@ -65,7 +72,7 @@ class MonaTransactionViewerFromDb {
         return `<time datetime="${iso}" title="${iso}">${format}</time>`
     }
     //makeBalancePeopleTable(json) { return `<table><tr><td>${this.makePayBalanceAmount(json)}</td><td>${this.makePeopleTotalTable(json)}</td></tr></table>` }
-    makeBalancePeopleTable() { return `<table><tr><td>${this.makePayBalanceAmount()}</td><td>${this.makePeopleTotalTable()}</td></tr></table>` }
+    makeBalancePeopleTable() { return `<table><caption><a href="https://github.com/trezor/blockbook/blob/master/docs/api.md#get-address">API</a>取得値</caption><tr><td>${this.makePayBalanceAmount()}</td><td>${this.makePeopleTotalTable()}</td></tr></table>` }
     makePayBalanceAmount() {
         /*
         const pay = this.calcTotalPay(json)
@@ -79,7 +86,10 @@ class MonaTransactionViewerFromDb {
         const pay = this.#toMona(this.last.sendValue)
         const receive = this.#toMona(this.last.receiveValue)
         const balance = this.#toMona(this.last.balance)
-        return `<table><tr><th>支払総額</th><td class="num"><span id="total-pay">${pay}</span> MONA</td></tr><tr><th>受取総額</th><td class="num"><span id="total-receive">${receive}</span> MONA</td></tr><tr><th>残高</th><td class="num"><span id="balance">${balance}</span> MONA</td></tr></table>`
+        return `<table>
+<tr><th>支払総額</th><td class="num"><span id="total-pay">${pay}</span> MONA</td></tr>
+<tr><th>受取総額</th><td class="num"><span id="total-receive">${receive}</span> MONA</td></tr>
+<tr><th>残高</th><td class="num"><span id="balance">${balance}</span> MONA</td></tr></table>`
     }
     // 整数値valueからMONA単位に変換する
     #toMona(value) { return (value * (0.1**8)).toFixed(8) }
@@ -158,7 +168,51 @@ class MonaTransactionViewerFromDb {
         }
         return this.profiles[i]
     }
-
+    #makeCalcTable(pays, receives) {
+        const _pay = pays.map(p=>p.value).reduce((sum,v)=>sum+v)
+        const _fee = this.txs.filter(tx=>tx.isPay).map(tx=>tx.fee).reduce((sum,v)=>sum+v)
+        const _rec = receives.map(r=>r.value).reduce((sum,v)=>sum+v)
+        const pay = this.#toMona(_pay + _fee)     // 支払総額＋手数料
+        const fee = this.#toMona(_fee)            // 手数料
+        const receive = this.#toMona(_rec)        // 受取総額
+        const balance = this.#toMona(_rec - _pay - _fee) // 残高
+        return `<table><caption><a href="https://github.com/trezor/blockbook/blob/master/docs/api.md#get-transaction">tx</a>から自力計算した結果</caption>
+<tr><th>支払総額</th><td class="num"><span id="total-pay">${pay}</span> MONA</td></tr><tr><th>内手数料</th><td class="num">${fee} MONA</td></tr>
+<tr><th>手数料比</th><td class="num">${((_fee/_pay)*100).toFixed(2)}%</td></tr>
+<tr><th>受取総額</th><td class="num"><span id="total-receive">${receive}</span> MONA</td></tr>
+<tr><th>残高</th><td class="num"><span id="balance">${balance}</span> MONA</td></tr></table>`
+    }
+    async #makeMpChainTable() { // https://nemlog.nem.social/blog/56861
+        const adrrs = await window.mpurse.mpchain('address', {address: this.my});
+        const balances = await window.mpurse.mpchain('balances', {address: this.my});
+        const summary = `<table><caption><a href="https://github.com/tadajam/mpurse#mpchain">mpurse</a>経由<a href=>mpchain</a>取得値</caption>
+<tr><th>残高 MONA</th><td class="num"><span id="mpchain-balance-mona">${adrrs.mona_balance}</span> MONA</td></tr>
+<tr><th>残高 XMP</th><td class="num"><span id="mpchain-balance-xmp">${adrrs.xmp_balance}</span> XMP</td></tr>
+<tr><th>残高 独自トークン</th><td class="num"><span id="mpchain-balance-nft">${balances.data.length}</span></td></tr></table>`
+        const trs = []
+        trs.push(`<tr><th>名前</th><th>枚数</th><th>見積額(MONA)</th><th>説明</th></tr>`)
+        for (const balance of balances.data) {
+            trs.push(`<tr><td>${balance.asset}</td><td>${balance.quantity}</td><td>${balance.estimated_value.mona}</td><td>${balance.description}</td></tr>`)
+            //trs.push(`<tr><td>${balance.asset}</td><td>${balance.quantity}</td><td>${balance.estimated_value.mona}</td><td>${balance.}</td><td>${balance.description}</td><td>${balance.description}</td></tr>`)
+        }
+        const details = `<details><summary>独自トークン一覧</summary><table><caption>独自トークン</caption>${trs.join('')}</table></details>`
+        return summary + details
+    }
+    /*
+    #calcReceive(receives) { // 受取総額を算出する
+        //const partners = await this.dbs.get(this.my).dexie.receivePartners.toArray()
+        //return this.#toMona(this.partners.map(p=>p.value).reduce((sum,v)=>sum+v))
+        return this.#toMona(receives.map(r=>r.value).reduce((sum,v)=>sum+v))
+    }
+    #calcPay(pays) { // 支払総額を算出する
+        //const partners = await this.dbs.get(this.my).dexie.sendPartners.toArray()
+        //return this.#toMona(this.partners.map(p=>p.value).reduce((sum,v)=>sum+v))
+        return this.#toMona(pays.map(p=>p.value).reduce((sum,v)=>sum+v))
+    }
+    #calcFee(pays) { // 総手数料を算出する
+        return this.#toMona(this.txs.filter(tx=>tx.isPay).map(tx=>tx.fee).reduce((sum,v)=>sum+v))
+    }
+    */
     /*
     makePayPeoples(json) { return this.makePeoples(json.result.filter(r=>this.isPay(r.vout))) }
     makeReceivedPeoples(json) { return this.makePeoples(json.result.filter(r=>!this.isPay(r.vout))) }
