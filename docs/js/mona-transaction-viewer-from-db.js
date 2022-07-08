@@ -169,9 +169,12 @@ class MonaTransactionViewerFromDb {
         return this.profiles[i]
     }
     #makeCalcTable(pays, receives) {
-        const _pay = pays.map(p=>p.value).reduce((sum,v)=>sum+v)
-        const _fee = this.txs.filter(tx=>tx.isPay).map(tx=>tx.fee).reduce((sum,v)=>sum+v)
-        const _rec = receives.map(r=>r.value).reduce((sum,v)=>sum+v)
+        //const _pay = pays.map(p=>p.value).reduce((sum,v)=>sum+v)
+        //const _fee = this.txs.filter(tx=>tx.isPay).map(tx=>tx.fee).reduce((sum,v)=>sum+v)
+        //const _rec = receives.map(r=>r.value).reduce((sum,v)=>sum+v)
+        const _pay = (0===pays.length) ? 0 : pays.map(p=>p.value).reduce((sum,v)=>sum+v)
+        const _fee = (0===pays.length) ? 0 : this.txs.filter(tx=>tx.isPay).map(tx=>tx.fee).reduce((sum,v)=>sum+v)
+        const _rec = (0===receives.length) ? 0 : receives.map(r=>r.value).reduce((sum,v)=>sum+v)
         const pay = this.#toMona(_pay + _fee)     // 支払総額＋手数料
         const fee = this.#toMona(_fee)            // 手数料
         const receive = this.#toMona(_rec)        // 受取総額
