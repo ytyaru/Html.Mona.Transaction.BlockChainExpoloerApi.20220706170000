@@ -188,10 +188,17 @@ class MonaTransactionViewerFromDb {
     async #makeMpChainTable() { // https://nemlog.nem.social/blog/56861
         const adrrs = await window.mpurse.mpchain('address', {address: this.my});
         const balances = await window.mpurse.mpchain('balances', {address: this.my});
+        let tokenKind = 0
+        let tokenCount = 0
+        if (0 < balances.total) {
+            tokenKind = balances.data.length
+            tokenCount = balances.data.map(d=>Number(d.quantity)).reduce((sum,v)=>sum+v)
+        }
         const summary = `<table><caption><a href="https://github.com/tadajam/mpurse#mpchain">mpurse</a>経由<a href=>mpchain</a>取得値</caption>
 <tr><th>残高 MONA</th><td class="num"><span id="mpchain-balance-mona">${adrrs.mona_balance}</span> MONA</td></tr>
 <tr><th>残高 XMP</th><td class="num"><span id="mpchain-balance-xmp">${adrrs.xmp_balance}</span> XMP</td></tr>
-<tr><th>残高 独自トークン</th><td class="num"><span id="mpchain-balance-nft">${balances.data.length}</span></td></tr></table>`
+<tr><th>残高 トークン種</th><td class="num"><span id="mpchain-balance-nft">${tokenKind}</span> 種</td></tr>
+<tr><th>残高 トークン枚</th><td class="num"><span id="mpchain-balance-nft">${tokenCount}</span> 枚</td></tr></table>`
         const trs = []
         trs.push(`<tr><th>名前</th><th>枚数</th><th>見積額(MONA)</th><th>説明</th></tr>`)
         for (const balance of balances.data) {
